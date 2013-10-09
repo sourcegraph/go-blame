@@ -49,3 +49,73 @@ func TestBlameFile(t *testing.T) {
 		t.Errorf("Expected commits: %+v, but got %+v", expCommits, commits)
 	}
 }
+
+func TestBlameQuery(t *testing.T) {
+	hunks := []Hunk{
+		{CommitID: "0", LineStart: 0, LineEnd: 1, CharStart: 0, CharEnd: 2},
+		{CommitID: "1", LineStart: 1, LineEnd: 2, CharStart: 2, CharEnd: 4},
+		{CommitID: "2", LineStart: 2, LineEnd: 4, CharStart: 4, CharEnd: 8},
+	}
+	commits := map[string]Commit{
+		"0": {ID: "0", Author: Author{Name: "Bob", Email: "bob@bob.com"}},
+		"1": {ID: "0", Author: Author{Name: "Joe", Email: "joe@joe.com"}},
+		"2": {ID: "0", Author: Author{Name: "Bob", Email: "bob@bob.com"}},
+	}
+
+	testcases := []struct {
+		CharStart int
+		CharEnd   int
+		Result    map[Author]int
+	}{
+		{
+			CharStart: 0,
+			CharEnd:   2,
+			Result: map[Author]int{
+				Author{Name: "Bob", Email: "bob@bob.com"}: 2,
+			},
+		},
+		{
+			CharStart: 0,
+			CharEnd:   4,
+			Result: map[Author]int{
+				Author{Name: "Bob", Email: "bob@bob.com"}: 2,
+				Author{Name: "Joe", Email: "joe@joe.com"}: 2,
+			},
+		},
+		{
+			CharStart: 0,
+			CharEnd:   6,
+			Result: map[Author]int{
+				Author{Name: "Bob", Email: "bob@bob.com"}: 4,
+				Author{Name: "Joe", Email: "joe@joe.com"}: 2,
+			},
+		},
+		{
+			CharStart: 0,
+			CharEnd:   0,
+			Result:    map[Author]int{},
+		},
+		{
+			CharStart: 7,
+			CharEnd:   8,
+			Result: map[Author]int{
+				Author{Name: "Bob", Email: "bob@bob.com"}: 1,
+			},
+		},
+	}
+	for _, testcase := range testcases {
+		result, err := BlameQuery(hunks, commits, testcase.CharStart, testcase.CharEnd)
+		if err != nil {
+			t.Error(err)
+		} else if !reflect.DeepEqual(testcase.Result, result) {
+			t.Errorf("On query %d:%d, expected %+v, but got %+v", testcase.CharStart, testcase.CharEnd, testcase.Result, result)
+		}
+	}
+
+	errorQueries := [][2]int{{-1, -1}, {0, 9}}
+	for _, query := range errorQueries {
+		if _, err := BlameQuery(hunks, commits, query[0], query[1]); err == nil {
+			t.Errorf("On query %d:%d, expected error, but got none", query[0], query[1])
+		}
+	}
+}

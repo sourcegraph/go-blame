@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -24,6 +25,48 @@ type Commit struct {
 type Author struct {
 	Name  string
 	Email string
+}
+
+// Precondition: hunks should be sorted
+func BlameQuery(hunks []Hunk, commits map[string]Commit, charStart, charEnd int) (map[Author]int, error) {
+	startHunkIdx := sort.Search(len(hunks), func(i int) bool {
+		return charStart >= 0 && charStart < hunks[i].CharEnd
+	})
+	endHunkIdx := sort.Search(len(hunks), func(i int) bool {
+		return charEnd >= 0 && charEnd <= hunks[i].CharEnd
+	})
+
+	if startHunkIdx == len(hunks) {
+		return nil, fmt.Errorf("Could not find start hunk including index %d", charStart)
+	}
+	if endHunkIdx == len(hunks) {
+		return nil, fmt.Errorf("Could not find start hunk including index %d", charStart)
+	}
+
+	authorHist := make(map[Author]int)
+	for i := startHunkIdx; i <= endHunkIdx; i++ {
+		commit, in := commits[hunks[i].CommitID]
+		if !in {
+			return nil, fmt.Errorf("Commit %s not found", commit)
+		}
+
+		author := commit.Author
+		start, end := hunks[i].CharStart, hunks[i].CharEnd
+		if charStart > start {
+			start = charStart
+		}
+		if charEnd < end {
+			end = charEnd
+		}
+		if end-start <= 0 {
+			continue
+		}
+		if _, in := authorHist[author]; !in {
+			authorHist[author] = 0
+		}
+		authorHist[author] += end - start
+	}
+	return authorHist, nil
 }
 
 // Note: filePath should be absolute or relative to repoPath
@@ -96,18 +139,3 @@ func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, err
 
 	return hunks, commits, nil
 }
-
-// func BlameRepository(repoPath string) ([]*File, []*Commit, error) {
-// 	return nil, nil
-// }
-
-// type Blamer struct {
-// }
-
-// func NewBlamer(blamedFiles []*File) *Blamer {
-
-// }
-
-// func BlameQuery(start int, end int) {
-// 	// TODO
-// }
