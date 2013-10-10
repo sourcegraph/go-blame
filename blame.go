@@ -71,7 +71,7 @@ func BlameQuery(hunks []Hunk, commits map[string]Commit, charStart, charEnd int)
 
 // Note: filePath should be absolute or relative to repoPath
 func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, error) {
-	cmd := exec.Command("git", "blame", "--porcelain", "--", filePath)
+	cmd := exec.Command("git", "blame", "-w", "--porcelain", "--", filePath)
 	cmd.Dir = repoPath
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()

@@ -21,7 +21,7 @@ func TestBlameFile(t *testing.T) {
 		{CommitID: "7653ddfbc69a584272a18fe5e675b95025e84bb9", LineStart: 2, LineEnd: 4, CharStart: 21, CharEnd: 37},
 		{CommitID: "d858245d0690b83df437ad830ab1e971d389d68d", LineStart: 4, LineEnd: 5, CharStart: 37, CharEnd: 43},
 		{CommitID: "7653ddfbc69a584272a18fe5e675b95025e84bb9", LineStart: 5, LineEnd: 6, CharStart: 43, CharEnd: 45},
-		{CommitID: "496529633d7c1e8359db63aa3d297359479479ff", LineStart: 6, LineEnd: 7, CharStart: 45, CharEnd: 46},
+		{CommitID: "496529633d7c1e8359db63aa3d297359479479ff", LineStart: 6, LineEnd: 7, CharStart: 45, CharEnd: 47},
 	}
 	expCommits := map[string]Commit{
 		"26e6e00a6bfd5430a5a8840a543465dc8cac801e": {
