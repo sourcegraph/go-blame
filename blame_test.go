@@ -25,19 +25,19 @@ func TestBlameFile(t *testing.T) {
 	expCommits := map[string]Commit{
 		"26e6e00a6bfd5430a5a8840a543465dc8cac801e": {
 			ID:     "26e6e00a6bfd5430a5a8840a543465dc8cac801e",
-			Author: Author{Name: "Beyang Liu", Email: "<beyang.liu@gmail.com>"},
+			Author: Author{Name: "Beyang Liu", Email: "beyang.liu@gmail.com"},
 		},
 		"c497236203ba6400272034a9db7be00859c9863d": {
 			ID:     "c497236203ba6400272034a9db7be00859c9863d",
-			Author: Author{Name: "Beyang Liu", Email: "<beyang.liu@gmail.com>"},
+			Author: Author{Name: "Beyang Liu", Email: "beyang.liu@gmail.com"},
 		},
 		"7653ddfbc69a584272a18fe5e675b95025e84bb9": {
 			ID:     "7653ddfbc69a584272a18fe5e675b95025e84bb9",
-			Author: Author{Name: "Ricky Bobby", Email: "<ricky@bobby.com>"},
+			Author: Author{Name: "Ricky Bobby", Email: "ricky@bobby.com"},
 		},
 		"d858245d0690b83df437ad830ab1e971d389d68d": {
 			ID:     "d858245d0690b83df437ad830ab1e971d389d68d",
-			Author: Author{Name: "Sam Hamilton", Email: "<sam@salinas.com>"},
+			Author: Author{Name: "Sam Hamilton", Email: "sam@salinas.com"},
 		},
 	}
 

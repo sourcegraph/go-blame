@@ -108,6 +108,7 @@ func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, err
 			// New commit
 			author := strings.Join(strings.Split(remainingLines[1], " ")[1:], " ")
 			email := strings.Join(strings.Split(remainingLines[2], " ")[1:], " ")
+			email = email[1 : len(email)-1]
 			commits[commitID] = Commit{
 				ID: commitID,
 				Author: Author{
