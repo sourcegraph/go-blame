@@ -1,16 +1,16 @@
 package blame
 
 import (
-	// "os"
-	// "path/filepath"
+	"github.com/kr/pretty"
 	"reflect"
+	"strings"
 	"testing"
 )
 
 var testRepoDir = "goblametest"
 
 func TestBlameFile(t *testing.T) {
-	hunks, commits, err := BlameFile(testRepoDir, "goblametest.go")
+	hunks, commits, err := BlameFile(testRepoDir, "goblametest.txt")
 	if err != nil {
 		t.Fatalf("Failed to compute blame: %v", err)
 	}
@@ -21,6 +21,7 @@ func TestBlameFile(t *testing.T) {
 		{CommitID: "7653ddfbc69a584272a18fe5e675b95025e84bb9", LineStart: 2, LineEnd: 4, CharStart: 21, CharEnd: 37},
 		{CommitID: "d858245d0690b83df437ad830ab1e971d389d68d", LineStart: 4, LineEnd: 5, CharStart: 37, CharEnd: 43},
 		{CommitID: "7653ddfbc69a584272a18fe5e675b95025e84bb9", LineStart: 5, LineEnd: 6, CharStart: 43, CharEnd: 45},
+		{CommitID: "496529633d7c1e8359db63aa3d297359479479ff", LineStart: 6, LineEnd: 7, CharStart: 45, CharEnd: 46},
 	}
 	expCommits := map[string]Commit{
 		"26e6e00a6bfd5430a5a8840a543465dc8cac801e": {
@@ -39,14 +40,18 @@ func TestBlameFile(t *testing.T) {
 			ID:     "d858245d0690b83df437ad830ab1e971d389d68d",
 			Author: Author{Name: "Sam Hamilton", Email: "sam@salinas.com"},
 		},
+		"496529633d7c1e8359db63aa3d297359479479ff": {
+			ID:     "496529633d7c1e8359db63aa3d297359479479ff",
+			Author: Author{Name: "Beyang Liu", Email: "beyang.liu@gmail.com"},
+		},
 	}
 
 	if !reflect.DeepEqual(expHunks, hunks) {
-		t.Errorf("Expected hunks: %+v, but got %+v", expHunks, hunks)
+		t.Errorf("Hunks don't match: %s", strings.Join(pretty.Diff(expHunks, hunks), "\n"))
 	}
 
 	if !reflect.DeepEqual(expCommits, commits) {
-		t.Errorf("Expected commits: %+v, but got %+v", expCommits, commits)
+		t.Errorf("Commits don't match: %s", strings.Join(pretty.Diff(expCommits, commits), "\n"))
 	}
 }
 

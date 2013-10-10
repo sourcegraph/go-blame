@@ -78,10 +78,13 @@ func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, err
 	if err != nil {
 		return nil, nil, err
 	}
+	if len(out) < 1 {
+		return nil, nil, fmt.Errorf("Expected git output of length at least 1")
+	}
 
 	commits := make(map[string]Commit)
 	hunks := make([]Hunk, 0)
-	remainingLines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	remainingLines := strings.Split(string(out[:len(out)-1]), "\n")
 	charOffset := 0
 	for len(remainingLines) > 0 {
 		// Consume hunk
