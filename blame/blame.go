@@ -40,7 +40,7 @@ func BlameQuery(hunks []Hunk, commits map[string]Commit, charStart, charEnd int)
 		return nil, fmt.Errorf("Could not find start hunk including index %d", charStart)
 	}
 	if endHunkIdx == len(hunks) {
-		return nil, fmt.Errorf("Could not find start hunk including index %d", charStart)
+		return nil, fmt.Errorf("Could not find end hunk including index %d", charEnd)
 	}
 
 	authorHist := make(map[Author]int)
