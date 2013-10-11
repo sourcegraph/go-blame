@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-var testRepoDir = "goblametest"
+var testRepoDir = "../goblametest"
 
 func TestBlameFile(t *testing.T) {
 	hunks, commits, err := BlameFile(testRepoDir, "goblametest.txt")
