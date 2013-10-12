@@ -55,6 +55,26 @@ func TestBlameFile(t *testing.T) {
 	}
 }
 
+func TestBlameEmptyFile(t *testing.T) {
+	hunks, commits, err := BlameFile(testRepoDir, "__init__.py")
+	if err != nil {
+		t.Errorf("Failed to blame empty file: %v", err)
+	}
+	expHunks := []Hunk{{CommitID: "ba4f3f4147a2843eb88712b450ea28ec221f3490", LineStart: 0, LineEnd: 0, CharStart: 0, CharEnd: 0}}
+	expCommits := map[string]Commit{
+		"ba4f3f4147a2843eb88712b450ea28ec221f3490": {
+			ID:     "ba4f3f4147a2843eb88712b450ea28ec221f3490",
+			Author: Author{Name: "Beyang Liu", Email: "beyang.liu@gmail.com"},
+		},
+	}
+	if !reflect.DeepEqual(expHunks, hunks) {
+		t.Errorf("Hunks don't match: %s", strings.Join(pretty.Diff(expHunks, hunks), "\n"))
+	}
+	if !reflect.DeepEqual(expCommits, commits) {
+		t.Errorf("Commits don't match: %s", strings.Join(pretty.Diff(expCommits, commits), "\n"))
+	}
+}
+
 func TestBlameQuery(t *testing.T) {
 	hunks := []Hunk{
 		{CommitID: "0", LineStart: 0, LineEnd: 1, CharStart: 0, CharEnd: 2},

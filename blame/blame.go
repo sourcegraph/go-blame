@@ -71,6 +71,8 @@ func BlameQuery(hunks []Hunk, commits map[string]Commit, charStart, charEnd int)
 
 // Note: filePath should be absolute or relative to repoPath
 func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, error) {
+	fmt.Printf("BLAMING %s\n", filePath)
+
 	cmd := exec.Command("git", "blame", "-w", "--porcelain", "--", filePath)
 	cmd.Dir = repoPath
 	cmd.Stderr = os.Stderr
@@ -119,15 +121,20 @@ func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, err
 					Email: email,
 				},
 			}
-			if strings.HasPrefix(remainingLines[10], "previous ") {
+			if len(remainingLines) >= 13 && strings.HasPrefix(remainingLines[10], "previous ") {
 				charOffset += len(remainingLines[12])
 				remainingLines = remainingLines[13:]
-			} else if remainingLines[10] == "boundary" {
+			} else if len(remainingLines) >= 13 && remainingLines[10] == "boundary" {
 				charOffset += len(remainingLines[12])
 				remainingLines = remainingLines[13:]
-			} else {
+			} else if len(remainingLines) >= 12 {
 				charOffset += len(remainingLines[11])
 				remainingLines = remainingLines[12:]
+			} else if len(remainingLines) == 11 {
+				// Empty file
+				remainingLines = remainingLines[11:]
+			} else {
+				return nil, nil, fmt.Errorf("Unexpected number of remaining lines (%d):\n%s", len(remainingLines), "  "+strings.Join(remainingLines, "\n  "))
 			}
 		}
 
