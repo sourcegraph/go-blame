@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Hunk struct {
@@ -20,6 +21,10 @@ type Hunk struct {
 type Commit struct {
 	ID     string
 	Author Author
+
+	// AuthorDate is the date when this commit was originally made. (It may
+	// differ from the commit date, which is changed during rebases, etc.)
+	AuthorDate time.Time
 }
 
 type Author struct {
@@ -114,12 +119,17 @@ func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, err
 			if len(email) >= 2 && email[0] == '<' && email[len(email)-1] == '>' {
 				email = email[1 : len(email)-1]
 			}
+			authorTime, err := strconv.ParseInt(strings.Join(strings.Split(remainingLines[3], " ")[1:], " "), 10, 64)
+			if err != nil {
+				return nil, nil, fmt.Errorf("Failed to parse author-time %q", remainingLines[3])
+			}
 			commits[commitID] = Commit{
 				ID: commitID,
 				Author: Author{
 					Name:  author,
 					Email: email,
 				},
+				AuthorDate: time.Unix(authorTime, 0),
 			}
 			if len(remainingLines) >= 13 && strings.HasPrefix(remainingLines[10], "previous ") {
 				charOffset += len(remainingLines[12])
