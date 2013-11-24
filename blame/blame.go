@@ -32,6 +32,45 @@ type Author struct {
 	Email string
 }
 
+// BlamedHunk is a Hunk with a pointer to its commit (which contains the author
+// and date).
+type BlamedHunk struct {
+	*Hunk
+	Commit *Commit
+}
+
+// BlameHunks returns BlamedHunk structs corresponding to hunks, using the
+// commit data in commits. Hunks are only included if their range overlaps with
+// the character range specified by charStart..charEnd.
+//
+// Precondition: hunks should be sorted.
+func BlameHunks(hunks []Hunk, commits map[string]Commit, charStart, charEnd int) ([]BlamedHunk, error) {
+	startHunkIdx := sort.Search(len(hunks), func(i int) bool {
+		return charStart >= 0 && charStart < hunks[i].CharEnd
+	})
+	endHunkIdx := sort.Search(len(hunks), func(i int) bool {
+		return charEnd >= 0 && charEnd <= hunks[i].CharEnd
+	})
+
+	if startHunkIdx == len(hunks) {
+		return nil, fmt.Errorf("Could not find start hunk including index %d", charStart)
+	}
+	if endHunkIdx == len(hunks) {
+		return nil, fmt.Errorf("Could not find end hunk including index %d", charEnd)
+	}
+
+	var blamedHunks []BlamedHunk
+	for i := startHunkIdx; i <= endHunkIdx; i++ {
+		commit, in := commits[hunks[i].CommitID]
+		if !in {
+			return nil, fmt.Errorf("Commit %s not found", commit)
+		}
+
+		blamedHunks = append(blamedHunks, BlamedHunk{&hunks[i], &commit})
+	}
+	return blamedHunks, nil
+}
+
 // Precondition: hunks should be sorted
 func BlameQuery(hunks []Hunk, commits map[string]Commit, charStart, charEnd int) (map[Author]int, error) {
 	startHunkIdx := sort.Search(len(hunks), func(i int) bool {

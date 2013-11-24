@@ -81,33 +81,46 @@ func TestBlameEmptyFile(t *testing.T) {
 }
 
 func TestBlameQuery(t *testing.T) {
+	t0, t1, t2 := time.Unix(0, 0), time.Unix(1, 0), time.Unix(2, 0)
 	hunks := []Hunk{
 		{CommitID: "0", LineStart: 0, LineEnd: 1, CharStart: 0, CharEnd: 2},
 		{CommitID: "1", LineStart: 1, LineEnd: 2, CharStart: 2, CharEnd: 4},
 		{CommitID: "2", LineStart: 2, LineEnd: 4, CharStart: 4, CharEnd: 8},
 	}
+
+	commit0 := Commit{ID: "0", Author: Author{Name: "Bob", Email: "bob@bob.com"}, AuthorDate: t0}
+	commit1 := Commit{ID: "1", Author: Author{Name: "Joe", Email: "joe@joe.com"}, AuthorDate: t1}
+	commit2 := Commit{ID: "2", Author: Author{Name: "Bob", Email: "bob@bob.com"}, AuthorDate: t2}
 	commits := map[string]Commit{
-		"0": {ID: "0", Author: Author{Name: "Bob", Email: "bob@bob.com"}},
-		"1": {ID: "0", Author: Author{Name: "Joe", Email: "joe@joe.com"}},
-		"2": {ID: "0", Author: Author{Name: "Bob", Email: "bob@bob.com"}},
+		"0": commit0,
+		"1": commit1,
+		"2": commit2,
 	}
 
 	testcases := []struct {
-		CharStart int
-		CharEnd   int
-		Result    map[Author]int
+		CharStart        int
+		CharEnd          int
+		Result           []BlamedHunk
+		AuthorHistResult map[Author]int
 	}{
 		{
 			CharStart: 0,
 			CharEnd:   2,
-			Result: map[Author]int{
+			Result: []BlamedHunk{
+				{&hunks[0], &commit0},
+			},
+			AuthorHistResult: map[Author]int{
 				Author{Name: "Bob", Email: "bob@bob.com"}: 2,
 			},
 		},
 		{
 			CharStart: 0,
 			CharEnd:   4,
-			Result: map[Author]int{
+			Result: []BlamedHunk{
+				{&hunks[0], &commit0},
+				{&hunks[1], &commit1},
+			},
+			AuthorHistResult: map[Author]int{
 				Author{Name: "Bob", Email: "bob@bob.com"}: 2,
 				Author{Name: "Joe", Email: "joe@joe.com"}: 2,
 			},
@@ -115,7 +128,12 @@ func TestBlameQuery(t *testing.T) {
 		{
 			CharStart: 0,
 			CharEnd:   6,
-			Result: map[Author]int{
+			Result: []BlamedHunk{
+				{&hunks[0], &commit0},
+				{&hunks[1], &commit1},
+				{&hunks[2], &commit2},
+			},
+			AuthorHistResult: map[Author]int{
 				Author{Name: "Bob", Email: "bob@bob.com"}: 4,
 				Author{Name: "Joe", Email: "joe@joe.com"}: 2,
 			},
@@ -123,22 +141,35 @@ func TestBlameQuery(t *testing.T) {
 		{
 			CharStart: 0,
 			CharEnd:   0,
-			Result:    map[Author]int{},
+			Result: []BlamedHunk{
+				{&hunks[0], &commit0},
+			},
+			AuthorHistResult: map[Author]int{},
 		},
 		{
 			CharStart: 7,
 			CharEnd:   8,
-			Result: map[Author]int{
+			Result: []BlamedHunk{
+				{&hunks[2], &commit2},
+			},
+			AuthorHistResult: map[Author]int{
 				Author{Name: "Bob", Email: "bob@bob.com"}: 1,
 			},
 		},
 	}
 	for _, testcase := range testcases {
-		result, err := BlameQuery(hunks, commits, testcase.CharStart, testcase.CharEnd)
+		authorHistResult, err := BlameQuery(hunks, commits, testcase.CharStart, testcase.CharEnd)
+		if err != nil {
+			t.Error(err)
+		} else if !reflect.DeepEqual(testcase.AuthorHistResult, authorHistResult) {
+			t.Errorf("On query %d:%d, expected AuthorHistResult %+v, but got %+v", testcase.CharStart, testcase.CharEnd, testcase.AuthorHistResult, authorHistResult)
+		}
+
+		result, err := BlameHunks(hunks, commits, testcase.CharStart, testcase.CharEnd)
 		if err != nil {
 			t.Error(err)
 		} else if !reflect.DeepEqual(testcase.Result, result) {
-			t.Errorf("On query %d:%d, expected %+v, but got %+v", testcase.CharStart, testcase.CharEnd, testcase.Result, result)
+			t.Errorf("On query %d:%d, expected Result %+v, but got %+v", testcase.CharStart, testcase.CharEnd, testcase.Result, result)
 		}
 	}
 
