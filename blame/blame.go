@@ -1,6 +1,7 @@
 package blame
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -29,6 +30,38 @@ type Commit struct {
 type Author struct {
 	Name  string
 	Email string
+}
+
+func BlameRepository(repoPath string) (map[string][]Hunk, map[string]Commit, error) {
+	cmd := exec.Command("git", "ls-tree", "-z", "-r", "HEAD", "--name-only")
+	cmd.Dir = repoPath
+	cmd.Stderr = os.Stderr
+	lines, err := cmd.Output()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	hunks := make(map[string][]Hunk)
+	commits := make(map[string]Commit)
+
+	files := bytes.Split(lines, []byte("\x00"))
+	for _, file := range files {
+		file := string(file)
+		if file == "" {
+			continue
+		}
+		fileHunks, commits2, err := BlameFile(repoPath, file)
+		if err != nil {
+			return nil, nil, err
+		}
+		hunks[file] = fileHunks
+		for commitID, commit := range commits2 {
+			if _, present := commits[commitID]; !present {
+				commits[commitID] = commit
+			}
+		}
+	}
+	return hunks, commits, nil
 }
 
 // Note: filePath should be absolute or relative to repoPath
