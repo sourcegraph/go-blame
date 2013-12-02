@@ -78,7 +78,7 @@ func TestBlameRepository(t *testing.T) {
 }
 
 func TestBlameFile(t *testing.T) {
-	hunks, commits, err := BlameFile(testRepoDir, "goblametest.txt")
+	hunks, commits, err := BlameFile(testRepoDir, "goblametest.txt", "HEAD")
 	if err != nil {
 		t.Fatalf("Failed to compute blame: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestBlameFile(t *testing.T) {
 }
 
 func TestBlameEmptyFile(t *testing.T) {
-	hunks, commits, err := BlameFile(testRepoDir, "__init__.py")
+	hunks, commits, err := BlameFile(testRepoDir, "__init__.py", "HEAD")
 	if err != nil {
 		t.Errorf("Failed to blame empty file: %v", err)
 	}

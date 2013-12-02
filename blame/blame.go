@@ -52,7 +52,7 @@ func BlameRepository(repoPath string, v string) (map[string][]Hunk, map[string]C
 		if file == "" {
 			continue
 		}
-		fileHunks, commits2, err := BlameFile(repoPath, file)
+		fileHunks, commits2, err := BlameFile(repoPath, file, v)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -67,8 +67,8 @@ func BlameRepository(repoPath string, v string) (map[string][]Hunk, map[string]C
 }
 
 // Note: filePath should be absolute or relative to repoPath
-func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, error) {
-	cmd := exec.Command("git", "blame", "-w", "--porcelain", "--", filePath)
+func BlameFile(repoPath string, filePath string, v string) ([]Hunk, map[string]Commit, error) {
+	cmd := exec.Command("git", "blame", "-w", "--porcelain", v, "--", filePath)
 	cmd.Dir = repoPath
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
