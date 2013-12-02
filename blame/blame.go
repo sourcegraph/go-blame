@@ -1,11 +1,12 @@
 package blame
 
 import (
-	"bytes"
 	"code.google.com/p/rog-go/parallel"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,20 +37,70 @@ type Author struct {
 	Email string
 }
 
-func BlameRepository(repoPath string, v string, ignorePatterns []string) (map[string][]Hunk, map[string]Commit, error) {
+func BlameRepository(repoPath, v string, ignorePatterns []string) (map[string][]Hunk, map[string]Commit, error) {
+	if isDir(filepath.Join(repoPath, ".hg")) {
+		return BlameHgRepository(repoPath, v, ignorePatterns)
+	}
+	return BlameGitRepository(repoPath, v, ignorePatterns)
+}
+
+func BlameFile(repoPath, filePath, v string) ([]Hunk, map[string]Commit, error) {
+	if isDir(filepath.Join(repoPath, ".hg")) {
+		return BlameHgFile(repoPath, filePath, v)
+	}
+	return BlameGitFile(repoPath, filePath, v)
+}
+
+// isDir returns true if path is an existing directory, and false otherwise.
+func isDir(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.IsDir()
+}
+
+func listGitRepositoryFiles(repoPath string, v string) ([]string, error) {
 	cmd := exec.Command("git", "ls-tree", "-z", "-r", v, "--name-only")
 	cmd.Dir = repoPath
 	cmd.Stderr = os.Stderr
 	lines, err := cmd.Output()
 	if err != nil {
+		return nil, err
+	}
+	files := strings.Split(string(lines), "\x00")
+	return files, nil
+}
+
+func BlameGitRepository(repoPath string, v string, ignorePatterns []string) (map[string][]Hunk, map[string]Commit, error) {
+	files, err := listGitRepositoryFiles(repoPath, v)
+	if err != nil {
 		return nil, nil, err
 	}
+	return blameFiles(repoPath, files, v, ignorePatterns)
+}
 
+func listHgRepositoryFiles(repoPath string, v string) ([]string, error) {
+	cmd := exec.Command("hg", "locate", "--print0", "-r", v)
+	cmd.Dir = repoPath
+	cmd.Stderr = os.Stderr
+	lines, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	files := strings.Split(string(lines), "\x00")
+	return files, nil
+}
+
+func BlameHgRepository(repoPath string, v string, ignorePatterns []string) (map[string][]Hunk, map[string]Commit, error) {
+	files, err := listHgRepositoryFiles(repoPath, v)
+	if err != nil {
+		return nil, nil, err
+	}
+	return blameFiles(repoPath, files, v, ignorePatterns)
+}
+
+func blameFiles(repoPath string, files []string, v string, ignorePatterns []string) (map[string][]Hunk, map[string]Commit, error) {
 	hunks := make(map[string][]Hunk)
 	commits := make(map[string]Commit)
 	var m sync.Mutex
-
-	files := bytes.Split(lines, []byte("\x00"))
 	par := parallel.NewRun(8)
 	for _, file := range files {
 		file := string(file)
@@ -85,7 +136,7 @@ func BlameRepository(repoPath string, v string, ignorePatterns []string) (map[st
 			return nil
 		})
 	}
-	err = par.Wait()
+	err := par.Wait()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -94,7 +145,7 @@ func BlameRepository(repoPath string, v string, ignorePatterns []string) (map[st
 }
 
 // Note: filePath should be absolute or relative to repoPath
-func BlameFile(repoPath string, filePath string, v string) ([]Hunk, map[string]Commit, error) {
+func BlameGitFile(repoPath string, filePath string, v string) ([]Hunk, map[string]Commit, error) {
 	cmd := exec.Command("git", "blame", "-w", "--porcelain", v, "--", filePath)
 	cmd.Dir = repoPath
 	cmd.Stderr = os.Stderr
@@ -183,4 +234,106 @@ func BlameFile(repoPath string, filePath string, v string) ([]Hunk, map[string]C
 	}
 
 	return hunks, commits, nil
+}
+
+// Note: filePath should be absolute or relative to repoPath
+func BlameHgFile(repoPath string, filePath string, v string) ([]Hunk, map[string]Commit, error) {
+	cmd := exec.Command("hg", "annotate", "-r", v, "-nduvc", "--", filePath)
+	cmd.Dir = repoPath
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+
+	var currentHunk *Hunk
+	var hunks []Hunk
+	commits := make(map[string]Commit)
+	for i, line := range lines {
+		parsed, err := parseHgAnnotateLine(line)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		if _, present := commits[parsed.changeset]; !present {
+			msg, err := getHgCommitMessage(repoPath, parsed.changeset)
+			if err != nil {
+				return nil, nil, err
+			}
+			commits[parsed.changeset] = Commit{
+				ID:         parsed.changeset,
+				AuthorDate: parsed.date,
+				Author:     Author{Name: parsed.authorName, Email: parsed.authorEmail},
+				Message:    msg,
+			}
+		}
+
+		if currentHunk == nil {
+			currentHunk = &Hunk{
+				CommitID:  parsed.changeset,
+				LineStart: 0, CharStart: 0,
+			}
+		}
+
+		currentHunk.LineEnd = i
+		currentHunk.CharEnd += parsed.bytelen
+
+		if currentHunk.CommitID != parsed.changeset || i == len(lines)-1 {
+			hunks = append(hunks, *currentHunk)
+			currentHunk = &Hunk{
+				CommitID:  parsed.changeset,
+				LineStart: i + 1, CharStart: currentHunk.CharEnd + 1,
+			}
+		}
+	}
+
+	return hunks, commits, nil
+}
+
+func getHgCommitMessage(repoPath string, changeset string) (msg string, err error) {
+	cmd := exec.Command("hg", "log", "-r", changeset, "--template", "{desc}")
+	cmd.Dir = repoPath
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+type hgAnnotateLine struct {
+	authorName, authorEmail string
+	changeset               string
+	date                    time.Time
+	bytelen                 int
+}
+
+var hgAnnotateRE = regexp.MustCompile(`^\s*(.*)\s+(<[^ >]+[ >]?)\s*\d+\s*([0-9a-f]+)\s*(.*): (.*)$`)
+var hgDateFormat = "Mon Jan 2 15:04:05 2006 -0700"
+
+func parseHgAnnotateLine(line string) (*hgAnnotateLine, error) {
+	parts := hgAnnotateRE.FindStringSubmatch(line)
+	if len(parts) < 5 {
+		return nil, fmt.Errorf("failed to match (got only %d matches) %q", len(parts), line)
+	}
+
+	a := new(hgAnnotateLine)
+
+	var datestr string
+	a.authorName, a.authorEmail, a.changeset, datestr = strings.TrimSpace(parts[1]), parts[2], parts[3], parts[4]
+
+	a.authorEmail = strings.TrimSpace(strings.Replace(strings.Replace(a.authorEmail, ">", "", -1), "<", "", -1))
+
+	date, err := time.Parse(hgDateFormat, datestr)
+	if err != nil {
+		return nil, err
+	}
+	a.date = date
+
+	contents := parts[5]
+	a.bytelen = len(contents)
+
+	return a, nil
 }
