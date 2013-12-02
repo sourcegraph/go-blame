@@ -1,6 +1,7 @@
 package blame
 
 import (
+	"github.com/kr/pretty"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ var expHunksHg = map[string][]Hunk{
 	"foo": []Hunk{
 		{CommitID: "d047adf8d7ff", LineStart: 0, LineEnd: 0, CharStart: 0, CharEnd: 10},
 	},
+	"empty-file.txt": nil,
 }
 
 var expCommitsHg = map[string]Commit{
@@ -48,11 +50,11 @@ func TestBlameRepository_Hg(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(expHunksHg, hunks) {
-		t.Errorf("Hunks don't match: %+v != %+v", expHunks, hunks)
+		t.Errorf("Hunks don't match: %+v != %+v\n%v", expHunksHg, hunks, strings.Join(pretty.Diff(expHunksHg, hunks), "\n"))
 	}
 
 	if !reflect.DeepEqual(expCommitsHg, commits) {
-		t.Errorf("Commits don't match: %+v != %+v", expCommits, commits)
+		t.Errorf("Commits don't match: %+v != %+v", expCommitsHg, commits)
 	}
 }
 
@@ -63,21 +65,11 @@ func TestBlameFile_Hg(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(expHunksHg["foo"], hunks) {
-		t.Errorf("Hunks don't match: %+v != %+v", expHunks, hunks)
+		t.Errorf("Hunks don't match: %+v != %+v", expHunksHg["foo"], hunks)
 	}
 
-	// all but one commit in expCommits touches this file, so instead of
-	// duplicating the fixture data, just exclude that one commit.
-	excludeCommit := "ba4f3"
-	fileExpCommits := make(map[string]Commit)
-	for commitID, commit := range expCommitsHg {
-		if !strings.HasPrefix(commitID, excludeCommit) {
-			fileExpCommits[commitID] = commit
-		}
-	}
-
-	if !reflect.DeepEqual(fileExpCommits, commits) {
-		t.Errorf("Commits don't match: %+v != %+v", fileExpCommits, commits)
+	if !reflect.DeepEqual(expCommitsHg, commits) {
+		t.Errorf("Commits don't match: %+v != %+v", expCommitsHg, commits)
 	}
 }
 

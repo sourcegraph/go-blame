@@ -256,6 +256,9 @@ func BlameHgFile(repoPath string, filePath string, v string) ([]Hunk, map[string
 		if err != nil {
 			return nil, nil, err
 		}
+		if parsed == nil {
+			continue
+		}
 
 		if _, present := commits[parsed.changeset]; !present {
 			msg, err := getHgCommitMessage(repoPath, parsed.changeset)
@@ -310,12 +313,19 @@ type hgAnnotateLine struct {
 	bytelen                 int
 }
 
-var hgAnnotateRE = regexp.MustCompile(`^\s*(.*)\s+(<[^ >]+[ >]?)\s*\d+\s*([0-9a-f]+)\s*(.*): (.*)$`)
+var hgAnnotateRE = regexp.MustCompile(`^\s*(.*)\s+(<[^ >]+[ >]?)\s*\d+\s*([0-9a-f]+)\s*([^:]*:[^:]*:[^:]*):(.*)$`)
 var hgDateFormat = "Mon Jan 2 15:04:05 2006 -0700"
 
 func parseHgAnnotateLine(line string) (*hgAnnotateLine, error) {
+	if line == "" {
+		return nil, nil
+	}
+
 	parts := hgAnnotateRE.FindStringSubmatch(line)
 	if len(parts) < 5 {
+		if strings.Contains(line, ": binary file") {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to match (got only %d matches) %q", len(parts), line)
 	}
 
@@ -333,7 +343,11 @@ func parseHgAnnotateLine(line string) (*hgAnnotateLine, error) {
 	a.date = date
 
 	contents := parts[5]
-	a.bytelen = len(contents)
+	if len(contents) > 0 {
+		a.bytelen = len(contents) - 1
+	} else {
+		a.bytelen = len(contents)
+	}
 
 	return a, nil
 }
