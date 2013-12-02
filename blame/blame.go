@@ -34,7 +34,7 @@ type Author struct {
 	Email string
 }
 
-func BlameRepository(repoPath string, v string) (map[string][]Hunk, map[string]Commit, error) {
+func BlameRepository(repoPath string, v string, ignorePatterns []string) (map[string][]Hunk, map[string]Commit, error) {
 	cmd := exec.Command("git", "ls-tree", "-z", "-r", v, "--name-only")
 	cmd.Dir = repoPath
 	cmd.Stderr = os.Stderr
@@ -52,6 +52,18 @@ func BlameRepository(repoPath string, v string) (map[string][]Hunk, map[string]C
 		if file == "" {
 			continue
 		}
+
+		ignore := false
+		for _, pat := range ignorePatterns {
+			if strings.Contains(file, pat) {
+				ignore = true
+				break
+			}
+		}
+		if ignore {
+			continue
+		}
+
 		fileHunks, commits2, err := BlameFile(repoPath, file, v)
 		if err != nil {
 			return nil, nil, err
