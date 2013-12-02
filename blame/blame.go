@@ -2,11 +2,13 @@ package blame
 
 import (
 	"bytes"
+	"code.google.com/p/rog-go/parallel"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -45,8 +47,10 @@ func BlameRepository(repoPath string, v string, ignorePatterns []string) (map[st
 
 	hunks := make(map[string][]Hunk)
 	commits := make(map[string]Commit)
+	var m sync.Mutex
 
 	files := bytes.Split(lines, []byte("\x00"))
+	par := parallel.NewRun(8)
 	for _, file := range files {
 		file := string(file)
 		if file == "" {
@@ -64,22 +68,34 @@ func BlameRepository(repoPath string, v string, ignorePatterns []string) (map[st
 			continue
 		}
 
-		fileHunks, commits2, err := BlameFile(repoPath, file, v)
-		if err != nil {
-			return nil, nil, err
-		}
-		hunks[file] = fileHunks
-		for commitID, commit := range commits2 {
-			if _, present := commits[commitID]; !present {
-				commits[commitID] = commit
+		par.Do(func() error {
+			fileHunks, commits2, err := BlameFile(repoPath, file, v)
+			if err != nil {
+				return err
 			}
-		}
+
+			m.Lock()
+			defer m.Unlock()
+			hunks[file] = fileHunks
+			for commitID, commit := range commits2 {
+				if _, present := commits[commitID]; !present {
+					commits[commitID] = commit
+				}
+			}
+			return nil
+		})
 	}
+	err = par.Wait()
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return hunks, commits, nil
 }
 
 // Note: filePath should be absolute or relative to repoPath
 func BlameFile(repoPath string, filePath string, v string) ([]Hunk, map[string]Commit, error) {
+	println(filePath)
 	cmd := exec.Command("git", "blame", "-w", "--porcelain", v, "--", filePath)
 	cmd.Dir = repoPath
 	cmd.Stderr = os.Stderr
