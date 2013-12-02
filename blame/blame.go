@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Hunk struct {
@@ -20,11 +21,54 @@ type Hunk struct {
 type Commit struct {
 	ID     string
 	Author Author
+
+	// AuthorDate is the date when this commit was originally made. (It may
+	// differ from the commit date, which is changed during rebases, etc.)
+	AuthorDate time.Time
 }
 
 type Author struct {
 	Name  string
 	Email string
+}
+
+// BlamedHunk is a Hunk with a pointer to its commit (which contains the author
+// and date).
+type BlamedHunk struct {
+	*Hunk
+	Commit *Commit
+}
+
+// BlameHunks returns BlamedHunk structs corresponding to hunks, using the
+// commit data in commits. Hunks are only included if their range overlaps with
+// the character range specified by charStart..charEnd.
+//
+// Precondition: hunks should be sorted.
+func BlameHunks(hunks []Hunk, commits map[string]Commit, charStart, charEnd int) ([]BlamedHunk, error) {
+	startHunkIdx := sort.Search(len(hunks), func(i int) bool {
+		return charStart >= 0 && charStart < hunks[i].CharEnd
+	})
+	endHunkIdx := sort.Search(len(hunks), func(i int) bool {
+		return charEnd >= 0 && charEnd <= hunks[i].CharEnd
+	})
+
+	if startHunkIdx == len(hunks) {
+		return nil, fmt.Errorf("Could not find start hunk including index %d", charStart)
+	}
+	if endHunkIdx == len(hunks) {
+		return nil, fmt.Errorf("Could not find end hunk including index %d", charEnd)
+	}
+
+	var blamedHunks []BlamedHunk
+	for i := startHunkIdx; i <= endHunkIdx; i++ {
+		commit, in := commits[hunks[i].CommitID]
+		if !in {
+			return nil, fmt.Errorf("Commit %s not found", commit)
+		}
+
+		blamedHunks = append(blamedHunks, BlamedHunk{&hunks[i], &commit})
+	}
+	return blamedHunks, nil
 }
 
 // Precondition: hunks should be sorted
@@ -114,12 +158,17 @@ func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, err
 			if len(email) >= 2 && email[0] == '<' && email[len(email)-1] == '>' {
 				email = email[1 : len(email)-1]
 			}
+			authorTime, err := strconv.ParseInt(strings.Join(strings.Split(remainingLines[3], " ")[1:], " "), 10, 64)
+			if err != nil {
+				return nil, nil, fmt.Errorf("Failed to parse author-time %q", remainingLines[3])
+			}
 			commits[commitID] = Commit{
 				ID: commitID,
 				Author: Author{
 					Name:  author,
 					Email: email,
 				},
+				AuthorDate: time.Unix(authorTime, 0),
 			}
 			if len(remainingLines) >= 13 && strings.HasPrefix(remainingLines[10], "previous ") {
 				charOffset += len(remainingLines[12])
