@@ -22,6 +22,8 @@ type Commit struct {
 	ID     string
 	Author Author
 
+	Message string
+
 	// AuthorDate is the date when this commit was originally made. (It may
 	// differ from the commit date, which is changed during rebases, etc.)
 	AuthorDate time.Time
@@ -113,14 +115,17 @@ func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, err
 			if err != nil {
 				return nil, nil, fmt.Errorf("Failed to parse author-time %q", remainingLines[3])
 			}
-			commits[commitID] = Commit{
-				ID: commitID,
+			summary := strings.Join(strings.Split(remainingLines[9], " ")[1:], " ")
+			commit := Commit{
+				ID:      commitID,
+				Message: summary,
 				Author: Author{
 					Name:  author,
 					Email: email,
 				},
 				AuthorDate: time.Unix(authorTime, 0),
 			}
+
 			if len(remainingLines) >= 13 && strings.HasPrefix(remainingLines[10], "previous ") {
 				charOffset += len(remainingLines[12])
 				remainingLines = remainingLines[13:]
@@ -136,6 +141,8 @@ func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, err
 			} else {
 				return nil, nil, fmt.Errorf("Unexpected number of remaining lines (%d):\n%s", len(remainingLines), "  "+strings.Join(remainingLines, "\n  "))
 			}
+
+			commits[commitID] = commit
 		}
 
 		// Consume remaining lines in hunk

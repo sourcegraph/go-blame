@@ -26,31 +26,37 @@ var expHunks = map[string][]Hunk{
 var expCommits = map[string]Commit{
 	"26e6e00a6bfd5430a5a8840a543465dc8cac801e": {
 		ID:         "26e6e00a6bfd5430a5a8840a543465dc8cac801e",
+		Message:    "initial commit",
 		Author:     Author{Name: "Beyang Liu", Email: "beyang.liu@gmail.com"},
 		AuthorDate: mustParseTime("Mon Oct 7 18:13:58 2013 -0700"),
 	},
 	"c497236203ba6400272034a9db7be00859c9863d": {
 		ID:         "c497236203ba6400272034a9db7be00859c9863d",
+		Message:    "revision",
 		Author:     Author{Name: "Beyang Liu", Email: "beyang.liu@gmail.com"},
 		AuthorDate: mustParseTime("Mon Oct 7 18:14:46 2013 -0700"),
 	},
 	"7653ddfbc69a584272a18fe5e675b95025e84bb9": {
 		ID:         "7653ddfbc69a584272a18fe5e675b95025e84bb9",
+		Message:    "modify imports",
 		Author:     Author{Name: "Ricky Bobby", Email: "ricky@bobby.com"},
 		AuthorDate: mustParseTime("Mon Oct 7 19:00:15 2013 -0700"),
 	},
 	"d858245d0690b83df437ad830ab1e971d389d68d": {
 		ID:         "d858245d0690b83df437ad830ab1e971d389d68d",
+		Message:    "add import",
 		Author:     Author{Name: "Sam Hamilton", Email: "sam@salinas.com"},
 		AuthorDate: mustParseTime("Tue Oct 8 09:29:12 2013 -0700"),
 	},
 	"496529633d7c1e8359db63aa3d297359479479ff": {
 		ID:         "496529633d7c1e8359db63aa3d297359479479ff",
+		Message:    "trailing newline",
 		Author:     Author{Name: "Beyang Liu", Email: "beyang.liu@gmail.com"},
 		AuthorDate: mustParseTime("Thu Oct 10 13:59:56 2013 -0700"),
 	},
 	"ba4f3f4147a2843eb88712b450ea28ec221f3490": {
 		ID:         "ba4f3f4147a2843eb88712b450ea28ec221f3490",
+		Message:    "empty file",
 		Author:     Author{Name: "Beyang Liu", Email: "beyang.liu@gmail.com"},
 		AuthorDate: mustParseTime("Fri Oct 11 18:28:10 2013 -0700"),
 	},
@@ -105,6 +111,7 @@ func TestBlameEmptyFile(t *testing.T) {
 	expCommits := map[string]Commit{
 		"ba4f3f4147a2843eb88712b450ea28ec221f3490": {
 			ID:         "ba4f3f4147a2843eb88712b450ea28ec221f3490",
+			Message:    "empty file",
 			Author:     Author{Name: "Beyang Liu", Email: "beyang.liu@gmail.com"},
 			AuthorDate: mustParseTime("Fri Oct 11 18:28:10 2013 -0700"),
 		},
