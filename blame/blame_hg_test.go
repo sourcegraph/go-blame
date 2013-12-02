@@ -11,7 +11,10 @@ var testRepoDirHg = "../go-vcs-hgtest"
 
 var expHunksHg = map[string][]Hunk{
 	"foo": []Hunk{
-		{CommitID: "d047adf8d7ff", LineStart: 0, LineEnd: 0, CharStart: 0, CharEnd: 10},
+		{CommitID: "d047adf8d7ff", LineStart: 0, LineEnd: 1, CharStart: 0, CharEnd: 11},
+		{CommitID: "52f96eab35cf", LineStart: 2, LineEnd: 3, CharStart: 12, CharEnd: 27},
+		{CommitID: "d14ec9caa006", LineStart: 4, LineEnd: 4, CharStart: 28, CharEnd: 39},
+		{CommitID: "52f96eab35cf", LineStart: 5, LineEnd: 6, CharStart: 40, CharEnd: 49},
 	},
 	"empty-file.txt": nil,
 }
@@ -40,6 +43,18 @@ var expCommitsHg = map[string]Commit{
 		Message:    "foo",
 		Author:     Author{Name: "Quinn Slack", Email: "qslack@qslack.com"},
 		AuthorDate: mustParseTime("Sat Jun 01 19:39:51 2013 -0700"),
+	},
+	"52f96eab35cf": {
+		ID:         "52f96eab35cf",
+		Message:    "append",
+		Author:     Author{Name: "Quinn Slack", Email: "qslack@qslack.com"},
+		AuthorDate: mustParseTime("Mon Dec 02 05:14:51 2013 -0800"),
+	},
+	"d14ec9caa006": {
+		ID:         "d14ec9caa006",
+		Message:    "interleave",
+		Author:     Author{Name: "Quinn Slack", Email: "qslack@qslack.com"},
+		AuthorDate: mustParseTime("Mon Dec 02 05:16:51 2013 -0800"),
 	},
 }
 

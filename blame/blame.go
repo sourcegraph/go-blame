@@ -280,16 +280,21 @@ func BlameHgFile(repoPath string, filePath string, v string) ([]Hunk, map[string
 			}
 		}
 
-		currentHunk.LineEnd = i
-		currentHunk.CharEnd += parsed.bytelen
-
-		if currentHunk.CommitID != parsed.changeset || i == len(lines)-1 {
+		lastLine := i == len(lines)-1
+		if currentHunk.CommitID != parsed.changeset || lastLine {
+			if lastLine {
+				currentHunk.CharEnd += parsed.bytelen + 1
+				currentHunk.LineEnd = i + 1
+			}
 			hunks = append(hunks, *currentHunk)
 			currentHunk = &Hunk{
 				CommitID:  parsed.changeset,
-				LineStart: i + 1, CharStart: currentHunk.CharEnd + 1,
+				LineStart: i + 1,
+				CharStart: currentHunk.CharEnd + 1, CharEnd: currentHunk.CharEnd,
 			}
 		}
+		currentHunk.LineEnd = i + 1
+		currentHunk.CharEnd += parsed.bytelen
 	}
 
 	return hunks, commits, nil
@@ -343,11 +348,12 @@ func parseHgAnnotateLine(line string) (*hgAnnotateLine, error) {
 	a.date = date
 
 	contents := parts[5]
-	if len(contents) > 0 {
-		a.bytelen = len(contents) - 1
+	if len(contents) < 2 {
+		contents = ""
 	} else {
-		a.bytelen = len(contents)
+		contents = contents[1:]
 	}
+	a.bytelen = len(contents) + 1 // +1 for newline
 
 	return a, nil
 }
