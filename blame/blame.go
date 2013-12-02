@@ -95,7 +95,6 @@ func BlameRepository(repoPath string, v string, ignorePatterns []string) (map[st
 
 // Note: filePath should be absolute or relative to repoPath
 func BlameFile(repoPath string, filePath string, v string) ([]Hunk, map[string]Commit, error) {
-	println(filePath)
 	cmd := exec.Command("git", "blame", "-w", "--porcelain", v, "--", filePath)
 	cmd.Dir = repoPath
 	cmd.Stderr = os.Stderr
