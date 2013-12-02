@@ -34,8 +34,8 @@ type Author struct {
 	Email string
 }
 
-func BlameRepository(repoPath string) (map[string][]Hunk, map[string]Commit, error) {
-	cmd := exec.Command("git", "ls-tree", "-z", "-r", "HEAD", "--name-only")
+func BlameRepository(repoPath string, v string) (map[string][]Hunk, map[string]Commit, error) {
+	cmd := exec.Command("git", "ls-tree", "-z", "-r", v, "--name-only")
 	cmd.Dir = repoPath
 	cmd.Stderr = os.Stderr
 	lines, err := cmd.Output()

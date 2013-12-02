@@ -63,7 +63,7 @@ var expCommits = map[string]Commit{
 }
 
 func TestBlameRepository(t *testing.T) {
-	hunks, commits, err := BlameRepository(testRepoDir)
+	hunks, commits, err := BlameRepository(testRepoDir, "HEAD")
 	if err != nil {
 		t.Fatalf("Failed to compute blame: %v", err)
 	}
