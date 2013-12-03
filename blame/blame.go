@@ -1,8 +1,12 @@
 package blame
 
 import (
+	"bufio"
 	"code.google.com/p/rog-go/parallel"
+	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -99,11 +103,40 @@ func listHgRepositoryFiles(repoPath string, v string) ([]string, error) {
 }
 
 func BlameHgRepository(repoPath string, v string, ignorePatterns []string) (map[string][]Hunk, map[string]Commit, error) {
-	files, err := listHgRepositoryFiles(repoPath, v)
+	// write script to temp file
+	tmpfile, err := ioutil.TempFile("", "hg-repo-annotate.py")
 	if err != nil {
 		return nil, nil, err
 	}
-	return blameFiles(repoPath, files, v, ignorePatterns)
+	defer os.Remove(tmpfile.Name())
+	_, err = io.WriteString(tmpfile, hgRepoAnnotatePy)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cmd := exec.Command("python", tmpfile.Name(), repoPath, v)
+	cmd.Dir = repoPath
+	cmd.Stderr = os.Stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	in := bufio.NewReader(stdout)
+	if err := cmd.Start(); err != nil {
+		return nil, nil, err
+	}
+
+	type outputFormat struct {
+		Commits map[string]Commit
+		Hunks   map[string][]Hunk
+	}
+	var data outputFormat
+	err = json.NewDecoder(in).Decode(&data)
+	if err != nil {
+		return nil, nil, err
+	}
+	return data.Hunks, data.Commits, nil
 }
 
 func blameFiles(repoPath string, files []string, v string, ignorePatterns []string) (map[string][]Hunk, map[string]Commit, error) {
@@ -302,16 +335,16 @@ func BlameHgFile(repoPath string, filePath string, v string) ([]Hunk, map[string
 		if currentHunk.CommitID != parsed.changeset || lastLine {
 			if lastLine {
 				currentHunk.CharEnd += parsed.bytelen + 1
-				currentHunk.LineEnd = i + 1
+				currentHunk.LineEnd = i
 			}
 			hunks = append(hunks, *currentHunk)
 			currentHunk = &Hunk{
 				CommitID:  parsed.changeset,
-				LineStart: i + 1,
+				LineStart: i,
 				CharStart: currentHunk.CharEnd + 1, CharEnd: currentHunk.CharEnd,
 			}
 		}
-		currentHunk.LineEnd = i + 1
+		currentHunk.LineEnd = i
 		currentHunk.CharEnd += parsed.bytelen
 	}
 
