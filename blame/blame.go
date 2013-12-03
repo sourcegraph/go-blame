@@ -165,19 +165,13 @@ func blameFiles(repoPath string, files []string, v string, ignorePatterns []stri
 		par.Do(func() error {
 			logf("[% 4d/%d %.1f%% %s/file] BlameFile %s %s", i, len(files), float64(i)/float64(len(files))*100, time.Since(t0)/time.Duration(i), repoPath, file)
 
-			t0p := time.Now()
 			fileHunks, commits2, err := BlameFile(repoPath, file, v)
 			if err != nil {
 				return err
 			}
-			logf(" - BlameFile tool %s (%d commits, %d hunks)", time.Since(t0p), len(commits2), len(fileHunks))
 
-			t1 := time.Now()
 			m.Lock()
 			defer m.Unlock()
-			defer func() {
-				logf(" - spent %s in locked portion (%d commits, %d hunks)", time.Since(t1), len(commits2), len(fileHunks))
-			}()
 			hunks[file] = fileHunks
 			for commitID, commit := range commits2 {
 				if _, present := commits[commitID]; !present {
