@@ -74,7 +74,7 @@ def addHunk(file, hunk):
     if file not in hunksByFile:
         hunksByFile[file] = []
     hunksByFile[file].append(hunk)
-totalHunks += 1
+    totalHunks += 1
 i = 0
 for file in files:
     filepath = os.path.join(repodir, file)
