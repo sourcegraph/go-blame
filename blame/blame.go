@@ -3,6 +3,7 @@ package blame
 import (
 	"code.google.com/p/rog-go/parallel"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,6 +36,14 @@ type Commit struct {
 type Author struct {
 	Name  string
 	Email string
+}
+
+var Log *log.Logger
+
+func logf(s string, v ...interface{}) {
+	if Log != nil {
+		Log.Printf(s, v...)
+	}
 }
 
 func BlameRepository(repoPath, v string, ignorePatterns []string) (map[string][]Hunk, map[string]Commit, error) {
@@ -101,8 +110,9 @@ func blameFiles(repoPath string, files []string, v string, ignorePatterns []stri
 	hunks := make(map[string][]Hunk)
 	commits := make(map[string]Commit)
 	var m sync.Mutex
-	par := parallel.NewRun(8)
-	for _, file := range files {
+	par := parallel.NewRun(12)
+	t0 := time.Now()
+	for i, file := range files {
 		file := string(file)
 		if file == "" {
 			continue
@@ -120,6 +130,8 @@ func blameFiles(repoPath string, files []string, v string, ignorePatterns []stri
 		}
 
 		par.Do(func() error {
+			logf("[% 4d/%d %.1f%% %s/file] BlameFile %s %s", i, len(files), float64(i)/float64(len(files))*100, time.Since(t0)/time.Duration(i), repoPath, file)
+
 			fileHunks, commits2, err := BlameFile(repoPath, file, v)
 			if err != nil {
 				return err
