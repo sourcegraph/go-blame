@@ -74,6 +74,7 @@ def addHunk(file, hunk):
     if file not in hunksByFile:
         hunksByFile[file] = []
     hunksByFile[file].append(hunk)
+    global totalHunks
     totalHunks += 1
 i = 0
 for file in files:
