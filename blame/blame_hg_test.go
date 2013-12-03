@@ -16,9 +16,18 @@ var expHunksHg = map[string][]Hunk{
 		{CommitID: "d14ec9caa006", LineStart: 3, LineEnd: 3, CharStart: 28, CharEnd: 39},
 		{CommitID: "52f96eab35cf", LineStart: 4, LineEnd: 5, CharStart: 40, CharEnd: 49},
 	},
+	"qux": []Hunk{
+		{CommitID: "b73a873eeb8a", LineStart: 0, LineEnd: 4, CharStart: 0, CharEnd: 39},
+	},
 }
 
 var expCommitsHg = map[string]Commit{
+	"b73a873eeb8a": {
+		ID:         "b73a873eeb8a",
+		Message:    "add qux",
+		Author:     Author{Name: "Quinn Slack", Email: "qslack@qslack.com"},
+		AuthorDate: mustParseTime("Mon Dec 03 01:40:43 2013 -0800"),
+	},
 	"c84bb8d093f2": {
 		ID:         "c84bb8d093f2",
 		Message:    "add empty file",
@@ -80,10 +89,9 @@ func TestBlameFile_Hg(t *testing.T) {
 
 	// all but one commit in expCommits touches this file, so instead of
 	// duplicating the fixture data, just exclude that one commit.
-	excludeCommit := "c84bb8d093f2"
 	fileExpCommits := make(map[string]Commit)
 	for commitID, commit := range expCommitsHg {
-		if !strings.HasPrefix(commitID, excludeCommit) {
+		if !strings.HasPrefix(commitID, "b73a873eeb8a") && !strings.HasPrefix(commitID, "c84bb8d093f2") {
 			fileExpCommits[commitID] = commit
 		}
 	}

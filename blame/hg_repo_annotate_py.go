@@ -67,9 +67,6 @@ files = [f for f in filesNulSep.split("\x00") if f]
 sys.stderr.write("Found %d files in hg repository at %s, revision %s\n" % (len(files), repodir, v))
 
 totalHunks = 0
-hunkFile = None
-hunk = None
-charOffsetInFile = 0
 def addHunk(file, hunk):
     if file not in hunksByFile:
         hunksByFile[file] = []
@@ -82,19 +79,18 @@ for file in files:
     sys.stderr.write("[% 2d/%d %.1f%%] Annotating file %s in hg repository at %s\n" % (i, len(files), float(i)/float(len(files))*100, file, repodir))
     i += 1
     lineno = 0
+    hunk = None
+    charOffsetInFile = 0
     for (info, contents) in client.annotate(files=[filepath], rev=v, changeset=True):
         changeset = info.strip()
     
         startNewHunk = False
         advanceCurrentHunk = False
-        if file != hunkFile:
-            if hunk is not None:
-                addHunk(hunkFile, hunk)
+        if hunk is None:
             startNewHunk = True
             charOffsetInFile = 0
         elif changeset != hunk['CommitID']:
-            if hunk is not None:
-                addHunk(hunkFile, hunk)
+            addHunk(file, hunk)
             startNewHunk = True
         else:
             advanceCurrentHunk = True
@@ -109,7 +105,6 @@ for file in files:
             }
             if hunk['CharStart'] != 0:
                 hunk['CharStart'] += 1
-            hunkFile = file
         
         charOffsetInFile += len(contents) + 1 # +1 for newline
         if advanceCurrentHunk:
@@ -118,7 +113,7 @@ for file in files:
         lineno += 1
     if hunk is not None:
         hunk['CharEnd'] = charOffsetInFile + 1
-        addHunk(hunkFile, hunk)
+        addHunk(file, hunk)
 
 sys.stderr.write("Read %d hunks from %d files in hg repository at %s, revision %s\n" % (totalHunks, len(hunksByFile), repodir, v))
 
