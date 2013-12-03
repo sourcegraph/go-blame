@@ -132,13 +132,19 @@ func blameFiles(repoPath string, files []string, v string, ignorePatterns []stri
 		par.Do(func() error {
 			logf("[% 4d/%d %.1f%% %s/file] BlameFile %s %s", i, len(files), float64(i)/float64(len(files))*100, time.Since(t0)/time.Duration(i), repoPath, file)
 
+			t0p := time.Now()
 			fileHunks, commits2, err := BlameFile(repoPath, file, v)
 			if err != nil {
 				return err
 			}
+			logf(" - BlameFile tool %s (%d commits, %d hunks)", time.Since(t0p), len(commits2), len(fileHunks))
 
+			t1 := time.Now()
 			m.Lock()
 			defer m.Unlock()
+			defer func() {
+				logf(" - spent %s in locked portion (%d commits, %d hunks)", time.Since(t1), len(commits2), len(fileHunks))
+			}()
 			hunks[file] = fileHunks
 			for commitID, commit := range commits2 {
 				if _, present := commits[commitID]; !present {
@@ -312,7 +318,44 @@ func BlameHgFile(repoPath string, filePath string, v string) ([]Hunk, map[string
 	return hunks, commits, nil
 }
 
+type hgCommitMessageKey struct{ repoPath, changeset string }
+
+var hgCommitMessageCache = make(map[hgCommitMessageKey]string)
+var hgCommitMessageCacheMu sync.Mutex
+
+var hits, misses int
+var logCache bool
+
 func getHgCommitMessage(repoPath string, changeset string) (msg string, err error) {
+	cachekey := hgCommitMessageKey{repoPath, changeset}
+	var present bool
+	func() {
+		hgCommitMessageCacheMu.Lock()
+		defer hgCommitMessageCacheMu.Unlock()
+		msg, present = hgCommitMessageCache[cachekey]
+	}()
+	if present {
+		if logCache {
+			hits++
+			logf("HIT %d (%.1f%%)", hits, float64(hits)/float64(hits+misses)*100)
+		}
+		return msg, nil
+	}
+
+	msg, err = getHgCommitMessageUncached(repoPath, changeset)
+	if err == nil {
+		if logCache {
+			misses++
+			logf("MISS %d (%.1f%%)", misses, float64(misses)/float64(hits+misses)*100)
+		}
+		hgCommitMessageCacheMu.Lock()
+		defer hgCommitMessageCacheMu.Unlock()
+		hgCommitMessageCache[cachekey] = msg
+	}
+	return
+}
+
+func getHgCommitMessageUncached(repoPath string, changeset string) (msg string, err error) {
 	cmd := exec.Command("hg", "log", "-r", changeset, "--template", "{desc}")
 	cmd.Dir = repoPath
 	cmd.Stderr = os.Stderr
