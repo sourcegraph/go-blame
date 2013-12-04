@@ -163,7 +163,7 @@ func blameFiles(repoPath string, files []string, v string, ignorePatterns []stri
 		}
 
 		par.Do(func() error {
-			logf("[% 4d/%d %.1f%% %s/file] BlameFile %s %s", i, len(files), float64(i)/float64(len(files))*100, time.Since(t0)/time.Duration(i), repoPath, file)
+			logf("[% 4d/%d %.1f%% %s/file] BlameFile %s %s", i, len(files), float64(i)/float64(len(files))*100, time.Since(t0)/time.Duration(i+1), repoPath, file)
 
 			fileHunks, commits2, err := BlameFile(repoPath, file, v)
 			if err != nil {
