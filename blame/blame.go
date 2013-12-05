@@ -194,6 +194,14 @@ func BlameGitFile(repoPath string, filePath string, v string) ([]Hunk, map[strin
 		return nil, nil, err
 	}
 	if len(out) < 1 {
+		// go 1.8.5 changed the behavior of `git blame` on empty files.
+		// previously, it returned a boundary commit. now, it returns nothing.
+		// TODO(sqs) TODO(beyang): make `git blame` return the boundary commit
+		// on an empty file somehow, or come up with some other workaround.
+		st, err := os.Stat(filepath.Join(repoPath, filePath))
+		if err == nil && st.Size() == 0 {
+			return nil, nil, nil
+		}
 		return nil, nil, fmt.Errorf("Expected git output of length at least 1")
 	}
 
