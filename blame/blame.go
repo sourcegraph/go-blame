@@ -1,12 +1,20 @@
 package blame
 
 import (
+	"bufio"
+	"code.google.com/p/rog-go/parallel"
+	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
-	"sort"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,6 +30,8 @@ type Commit struct {
 	ID     string
 	Author Author
 
+	Message string
+
 	// AuthorDate is the date when this commit was originally made. (It may
 	// differ from the commit date, which is changed during rebases, etc.)
 	AuthorDate time.Time
@@ -32,90 +42,156 @@ type Author struct {
 	Email string
 }
 
-// BlamedHunk is a Hunk with a pointer to its commit (which contains the author
-// and date).
-type BlamedHunk struct {
-	*Hunk
-	Commit *Commit
+var Log *log.Logger
+
+func logf(s string, v ...interface{}) {
+	if Log != nil {
+		Log.Printf(s, v...)
+	}
 }
 
-// BlameHunks returns BlamedHunk structs corresponding to hunks, using the
-// commit data in commits. Hunks are only included if their range overlaps with
-// the character range specified by charStart..charEnd.
-//
-// Precondition: hunks should be sorted.
-func BlameHunks(hunks []Hunk, commits map[string]Commit, charStart, charEnd int) ([]BlamedHunk, error) {
-	startHunkIdx := sort.Search(len(hunks), func(i int) bool {
-		return charStart >= 0 && charStart < hunks[i].CharEnd
-	})
-	endHunkIdx := sort.Search(len(hunks), func(i int) bool {
-		return charEnd >= 0 && charEnd <= hunks[i].CharEnd
-	})
-
-	if startHunkIdx == len(hunks) {
-		return nil, fmt.Errorf("Could not find start hunk including index %d", charStart)
+func BlameRepository(repoPath, v string, ignorePatterns []string) (map[string][]Hunk, map[string]Commit, error) {
+	if isDir(filepath.Join(repoPath, ".hg")) {
+		return BlameHgRepository(repoPath, v, ignorePatterns)
 	}
-	if endHunkIdx == len(hunks) {
-		return nil, fmt.Errorf("Could not find end hunk including index %d", charEnd)
-	}
-
-	var blamedHunks []BlamedHunk
-	for i := startHunkIdx; i <= endHunkIdx; i++ {
-		commit, in := commits[hunks[i].CommitID]
-		if !in {
-			return nil, fmt.Errorf("Commit %s not found", commit)
-		}
-
-		blamedHunks = append(blamedHunks, BlamedHunk{&hunks[i], &commit})
-	}
-	return blamedHunks, nil
+	return BlameGitRepository(repoPath, v, ignorePatterns)
 }
 
-// Precondition: hunks should be sorted
-func BlameQuery(hunks []Hunk, commits map[string]Commit, charStart, charEnd int) (map[Author]int, error) {
-	startHunkIdx := sort.Search(len(hunks), func(i int) bool {
-		return charStart >= 0 && charStart < hunks[i].CharEnd
-	})
-	endHunkIdx := sort.Search(len(hunks), func(i int) bool {
-		return charEnd >= 0 && charEnd <= hunks[i].CharEnd
-	})
-
-	if startHunkIdx == len(hunks) {
-		return nil, fmt.Errorf("Could not find start hunk including index %d", charStart)
+func BlameFile(repoPath, filePath, v string) ([]Hunk, map[string]Commit, error) {
+	if isDir(filepath.Join(repoPath, ".hg")) {
+		return BlameHgFile(repoPath, filePath, v)
 	}
-	if endHunkIdx == len(hunks) {
-		return nil, fmt.Errorf("Could not find end hunk including index %d", charEnd)
+	return BlameGitFile(repoPath, filePath, v)
+}
+
+// isDir returns true if path is an existing directory, and false otherwise.
+func isDir(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.IsDir()
+}
+
+func listGitRepositoryFiles(repoPath string, v string) ([]string, error) {
+	cmd := exec.Command("git", "ls-tree", "-z", "-r", v, "--name-only")
+	cmd.Dir = repoPath
+	cmd.Stderr = os.Stderr
+	lines, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	files := strings.Split(string(lines), "\x00")
+	return files, nil
+}
+
+func BlameGitRepository(repoPath string, v string, ignorePatterns []string) (map[string][]Hunk, map[string]Commit, error) {
+	files, err := listGitRepositoryFiles(repoPath, v)
+	if err != nil {
+		return nil, nil, err
+	}
+	return blameFiles(repoPath, files, v, ignorePatterns)
+}
+
+func listHgRepositoryFiles(repoPath string, v string) ([]string, error) {
+	cmd := exec.Command("hg", "locate", "--print0", "-r", v)
+	cmd.Dir = repoPath
+	cmd.Stderr = os.Stderr
+	lines, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	files := strings.Split(string(lines), "\x00")
+	return files, nil
+}
+
+func BlameHgRepository(repoPath string, v string, ignorePatterns []string) (map[string][]Hunk, map[string]Commit, error) {
+	// write script to temp file
+	tmpfile, err := ioutil.TempFile("", "hg-repo-annotate.py")
+	if err != nil {
+		return nil, nil, err
+	}
+	defer os.Remove(tmpfile.Name())
+	_, err = io.WriteString(tmpfile, hgRepoAnnotatePy)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	authorHist := make(map[Author]int)
-	for i := startHunkIdx; i <= endHunkIdx; i++ {
-		commit, in := commits[hunks[i].CommitID]
-		if !in {
-			return nil, fmt.Errorf("Commit %s not found", commit)
-		}
+	cmd := exec.Command("python", tmpfile.Name(), repoPath, v)
+	cmd.Dir = repoPath
+	cmd.Stderr = os.Stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, err
+	}
 
-		author := commit.Author
-		start, end := hunks[i].CharStart, hunks[i].CharEnd
-		if charStart > start {
-			start = charStart
-		}
-		if charEnd < end {
-			end = charEnd
-		}
-		if end-start <= 0 {
+	in := bufio.NewReader(stdout)
+	if err := cmd.Start(); err != nil {
+		return nil, nil, err
+	}
+
+	type outputFormat struct {
+		Commits map[string]Commit
+		Hunks   map[string][]Hunk
+	}
+	var data outputFormat
+	err = json.NewDecoder(in).Decode(&data)
+	if err != nil {
+		return nil, nil, err
+	}
+	return data.Hunks, data.Commits, nil
+}
+
+func blameFiles(repoPath string, files []string, v string, ignorePatterns []string) (map[string][]Hunk, map[string]Commit, error) {
+	hunks := make(map[string][]Hunk)
+	commits := make(map[string]Commit)
+	var m sync.Mutex
+	par := parallel.NewRun(12)
+	t0 := time.Now()
+	for i, file := range files {
+		file := string(file)
+		if file == "" {
 			continue
 		}
-		if _, in := authorHist[author]; !in {
-			authorHist[author] = 0
+
+		ignore := false
+		for _, pat := range ignorePatterns {
+			if strings.Contains(file, pat) {
+				ignore = true
+				break
+			}
 		}
-		authorHist[author] += end - start
+		if ignore {
+			continue
+		}
+
+		par.Do(func() error {
+			logf("[% 4d/%d %.1f%% %s/file] BlameFile %s %s", i, len(files), float64(i)/float64(len(files))*100, time.Since(t0)/time.Duration(i+1), repoPath, file)
+
+			fileHunks, commits2, err := BlameFile(repoPath, file, v)
+			if err != nil {
+				return err
+			}
+
+			m.Lock()
+			defer m.Unlock()
+			hunks[file] = fileHunks
+			for commitID, commit := range commits2 {
+				if _, present := commits[commitID]; !present {
+					commits[commitID] = commit
+				}
+			}
+			return nil
+		})
 	}
-	return authorHist, nil
+	err := par.Wait()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return hunks, commits, nil
 }
 
 // Note: filePath should be absolute or relative to repoPath
-func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, error) {
-	cmd := exec.Command("git", "blame", "-w", "--porcelain", "--", filePath)
+func BlameGitFile(repoPath string, filePath string, v string) ([]Hunk, map[string]Commit, error) {
+	cmd := exec.Command("git", "blame", "-w", "--porcelain", v, "--", filePath)
 	cmd.Dir = repoPath
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
@@ -162,14 +238,17 @@ func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, err
 			if err != nil {
 				return nil, nil, fmt.Errorf("Failed to parse author-time %q", remainingLines[3])
 			}
-			commits[commitID] = Commit{
-				ID: commitID,
+			summary := strings.Join(strings.Split(remainingLines[9], " ")[1:], " ")
+			commit := Commit{
+				ID:      commitID,
+				Message: summary,
 				Author: Author{
 					Name:  author,
 					Email: email,
 				},
 				AuthorDate: time.Unix(authorTime, 0),
 			}
+
 			if len(remainingLines) >= 13 && strings.HasPrefix(remainingLines[10], "previous ") {
 				charOffset += len(remainingLines[12])
 				remainingLines = remainingLines[13:]
@@ -185,6 +264,8 @@ func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, err
 			} else {
 				return nil, nil, fmt.Errorf("Unexpected number of remaining lines (%d):\n%s", len(remainingLines), "  "+strings.Join(remainingLines, "\n  "))
 			}
+
+			commits[commitID] = commit
 		}
 
 		// Consume remaining lines in hunk
@@ -198,4 +279,163 @@ func BlameFile(repoPath string, filePath string) ([]Hunk, map[string]Commit, err
 	}
 
 	return hunks, commits, nil
+}
+
+// Note: filePath should be absolute or relative to repoPath
+func BlameHgFile(repoPath string, filePath string, v string) ([]Hunk, map[string]Commit, error) {
+	cmd := exec.Command("hg", "annotate", "-r", v, "-nduvc", "--", filePath)
+	cmd.Dir = repoPath
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+
+	var currentHunk *Hunk
+	var hunks []Hunk
+	commits := make(map[string]Commit)
+	for i, line := range lines {
+		parsed, err := parseHgAnnotateLine(line)
+		if err != nil {
+			return nil, nil, err
+		}
+		if parsed == nil {
+			continue
+		}
+
+		if _, present := commits[parsed.changeset]; !present {
+			msg, err := getHgCommitMessage(repoPath, parsed.changeset)
+			if err != nil {
+				return nil, nil, err
+			}
+			commits[parsed.changeset] = Commit{
+				ID:         parsed.changeset,
+				AuthorDate: parsed.date,
+				Author:     Author{Name: parsed.authorName, Email: parsed.authorEmail},
+				Message:    msg,
+			}
+		}
+
+		if currentHunk == nil {
+			currentHunk = &Hunk{
+				CommitID:  parsed.changeset,
+				LineStart: 0, CharStart: 0,
+			}
+		}
+
+		lastLine := i == len(lines)-1
+		if currentHunk.CommitID != parsed.changeset || lastLine {
+			if lastLine {
+				currentHunk.CharEnd += parsed.bytelen + 1
+				currentHunk.LineEnd = i
+			}
+			hunks = append(hunks, *currentHunk)
+			currentHunk = &Hunk{
+				CommitID:  parsed.changeset,
+				LineStart: i,
+				CharStart: currentHunk.CharEnd + 1, CharEnd: currentHunk.CharEnd,
+			}
+		}
+		currentHunk.LineEnd = i
+		currentHunk.CharEnd += parsed.bytelen
+	}
+
+	return hunks, commits, nil
+}
+
+type hgCommitMessageKey struct{ repoPath, changeset string }
+
+var hgCommitMessageCache = make(map[hgCommitMessageKey]string)
+var hgCommitMessageCacheMu sync.Mutex
+
+var hits, misses int
+var logCache bool
+
+func getHgCommitMessage(repoPath string, changeset string) (msg string, err error) {
+	cachekey := hgCommitMessageKey{repoPath, changeset}
+	var present bool
+	func() {
+		hgCommitMessageCacheMu.Lock()
+		defer hgCommitMessageCacheMu.Unlock()
+		msg, present = hgCommitMessageCache[cachekey]
+	}()
+	if present {
+		if logCache {
+			hits++
+			logf("HIT %d (%.1f%%)", hits, float64(hits)/float64(hits+misses)*100)
+		}
+		return msg, nil
+	}
+
+	msg, err = getHgCommitMessageUncached(repoPath, changeset)
+	if err == nil {
+		if logCache {
+			misses++
+			logf("MISS %d (%.1f%%)", misses, float64(misses)/float64(hits+misses)*100)
+		}
+		hgCommitMessageCacheMu.Lock()
+		defer hgCommitMessageCacheMu.Unlock()
+		hgCommitMessageCache[cachekey] = msg
+	}
+	return
+}
+
+func getHgCommitMessageUncached(repoPath string, changeset string) (msg string, err error) {
+	cmd := exec.Command("hg", "log", "-r", changeset, "--template", "{desc}")
+	cmd.Dir = repoPath
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+type hgAnnotateLine struct {
+	authorName, authorEmail string
+	changeset               string
+	date                    time.Time
+	bytelen                 int
+}
+
+var hgAnnotateRE = regexp.MustCompile(`^\s*(.*)\s+(<[^ >]+[ >]?)\s*\d+\s*([0-9a-f]+)\s*([^:]*:[^:]*:[^:]*):(.*)$`)
+var hgDateFormat = "Mon Jan 2 15:04:05 2006 -0700"
+
+func parseHgAnnotateLine(line string) (*hgAnnotateLine, error) {
+	if line == "" {
+		return nil, nil
+	}
+
+	parts := hgAnnotateRE.FindStringSubmatch(line)
+	if len(parts) < 5 {
+		if strings.Contains(line, ": binary file") {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to match (got only %d matches) %q", len(parts), line)
+	}
+
+	a := new(hgAnnotateLine)
+
+	var datestr string
+	a.authorName, a.authorEmail, a.changeset, datestr = strings.TrimSpace(parts[1]), parts[2], parts[3], parts[4]
+
+	a.authorEmail = strings.TrimSpace(strings.Replace(strings.Replace(a.authorEmail, ">", "", -1), "<", "", -1))
+
+	date, err := time.Parse(hgDateFormat, datestr)
+	if err != nil {
+		return nil, err
+	}
+	a.date = date
+
+	contents := parts[5]
+	if len(contents) < 2 {
+		contents = ""
+	} else {
+		contents = contents[1:]
+	}
+	a.bytelen = len(contents) + 1 // +1 for newline
+
+	return a, nil
 }
