@@ -2,7 +2,6 @@ package blame
 
 import (
 	"bufio"
-	"code.google.com/p/rog-go/parallel"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -143,7 +142,6 @@ func blameFiles(repoPath string, files []string, v string, ignorePatterns []stri
 	hunks := make(map[string][]Hunk)
 	commits := make(map[string]Commit)
 	var m sync.Mutex
-	par := parallel.NewRun(4)
 	t0 := time.Now()
 	for i, file := range files {
 		file := string(file)
@@ -162,14 +160,16 @@ func blameFiles(repoPath string, files []string, v string, ignorePatterns []stri
 			continue
 		}
 
-		par.Do(func() error {
-			logf("[% 4d/%d %.1f%% %s/file] BlameFile %s %s", i, len(files), float64(i)/float64(len(files))*100, time.Since(t0)/time.Duration(i+1), repoPath, file)
+		tSleep := time.Millisecond * 50
+		time.Sleep(tSleep)
+		logf("[% 4d/%d %.1f%% %s/file] BlameFile %s %s", i, len(files), float64(i)/float64(len(files))*100, time.Since(t0.Add(tSleep))/time.Duration(i+1), repoPath, file)
 
-			fileHunks, commits2, err := BlameFile(repoPath, file, v)
-			if err != nil {
-				return err
-			}
+		fileHunks, commits2, err := BlameFile(repoPath, file, v)
+		if err != nil {
+			return nil, nil, err
+		}
 
+		func() {
 			m.Lock()
 			defer m.Unlock()
 			hunks[file] = fileHunks
@@ -178,12 +178,7 @@ func blameFiles(repoPath string, files []string, v string, ignorePatterns []stri
 					commits[commitID] = commit
 				}
 			}
-			return nil
-		})
-	}
-	err := par.Wait()
-	if err != nil {
-		return nil, nil, err
+		}()
 	}
 
 	return hunks, commits, nil
