@@ -143,7 +143,7 @@ func blameFiles(repoPath string, files []string, v string, ignorePatterns []stri
 	hunks := make(map[string][]Hunk)
 	commits := make(map[string]Commit)
 	var m sync.Mutex
-	par := parallel.NewRun(12)
+	par := parallel.NewRun(4)
 	t0 := time.Now()
 	for i, file := range files {
 		file := string(file)
