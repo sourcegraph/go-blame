@@ -77,7 +77,17 @@ func listGitRepositoryFiles(repoPath string, v string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	files := strings.Split(string(lines), "\x00")
+	paths := strings.Split(string(lines), "\x00")
+
+	// Directories listed here are git submodules (otherwise only files are
+	// listed). Omit these because we can't `git blame` them.
+	var files []string
+	for _, f := range paths {
+		if !isDir(filepath.Join(repoPath, f)) {
+			files = append(files, f)
+		}
+	}
+
 	return files, nil
 }
 
