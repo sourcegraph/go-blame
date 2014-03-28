@@ -41,6 +41,17 @@ DSTDIFF = DSTOFFSET - STDOFFSET
 
 repodir = os.path.abspath(sys.argv[1])
 v = sys.argv[2]
+files = sys.argv[3:]
+explicitFiles = []
+if len(files) > 0:
+    sys.stderr.write("Using %d files specified on command line: %r\n" % (len(files), files))
+    explicitFiles = files
+
+if len(files) == 0:
+    filesNulSep = subprocess.check_output(["hg", "locate", "--print0", "-r", v], cwd=repodir)
+    files = [f for f in filesNulSep.split("\x00") if f]
+    sys.stderr.write("Found %d files in hg repository at %s, revision %s\n" % (len(files), repodir, v))
+
 
 sys.stderr.write("Opening hg repository at %s, revision %s\n" % (repodir, v))
 client = hglib.open(repodir)
@@ -48,7 +59,9 @@ client = hglib.open(repodir)
 commits = {}
 hunksByFile = {}
 
-for rev in client.log('%s:0' % v, followfirst=True):
+if explicitFiles:
+    sys.stderr.write("Finding commits for files: %r\n" % explicitFiles)
+for rev in client.log('%s:0' % v, followfirst=True, files=explicitFiles):
     authorName, authorEmail = parseaddr(rev.author)
     dt = rev.date.replace(tzinfo=Local)
     commitID = rev.node[:12]
@@ -61,10 +74,6 @@ for rev in client.log('%s:0' % v, followfirst=True):
     commits[commitID] = commit
 
 sys.stderr.write("Read %d commits in hg repository at %s, revision %s\n" % (len(commits), repodir, v))
-
-filesNulSep = subprocess.check_output(["hg", "locate", "--print0", "-r", v], cwd=repodir)
-files = [f for f in filesNulSep.split("\x00") if f]
-sys.stderr.write("Found %d files in hg repository at %s, revision %s\n" % (len(files), repodir, v))
 
 totalHunks = 0
 def addHunk(file, hunk):

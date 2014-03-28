@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -111,6 +110,11 @@ func listHgRepositoryFiles(repoPath string, v string) ([]string, error) {
 	return files, nil
 }
 
+type hgRepoAnnotatOutputFormat struct {
+	Commits map[string]Commit
+	Hunks   map[string][]Hunk
+}
+
 func BlameHgRepository(repoPath string, v string, ignorePatterns []string) (map[string][]Hunk, map[string]Commit, error) {
 	// write script to temp file
 	tmpfile, err := ioutil.TempFile("", "hg-repo-annotate.py")
@@ -136,11 +140,7 @@ func BlameHgRepository(repoPath string, v string, ignorePatterns []string) (map[
 		return nil, nil, err
 	}
 
-	type outputFormat struct {
-		Commits map[string]Commit
-		Hunks   map[string][]Hunk
-	}
-	var data outputFormat
+	var data hgRepoAnnotatOutputFormat
 	err = json.NewDecoder(in).Decode(&data)
 	if err != nil {
 		return nil, nil, err
@@ -288,159 +288,34 @@ func BlameGitFile(repoPath string, filePath string, v string) ([]Hunk, map[strin
 
 // Note: filePath should be absolute or relative to repoPath
 func BlameHgFile(repoPath string, filePath string, v string) ([]Hunk, map[string]Commit, error) {
-	cmd := exec.Command("hg", "annotate", "-r", v, "-nduvc", "--", filePath)
-	cmd.Dir = repoPath
-	cmd.Stderr = os.Stderr
-	out, err := cmd.Output()
+	// write script to temp file
+	tmpfile, err := ioutil.TempFile("", "hg-repo-annotate.py")
+	if err != nil {
+		return nil, nil, err
+	}
+	defer os.Remove(tmpfile.Name())
+	_, err = io.WriteString(tmpfile, hgRepoAnnotatePy)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-
-	var currentHunk *Hunk
-	var hunks []Hunk
-	commits := make(map[string]Commit)
-	for i, line := range lines {
-		parsed, err := parseHgAnnotateLine(line)
-		if err != nil {
-			return nil, nil, err
-		}
-		if parsed == nil {
-			continue
-		}
-
-		if _, present := commits[parsed.changeset]; !present {
-			msg, err := getHgCommitMessage(repoPath, parsed.changeset)
-			if err != nil {
-				return nil, nil, err
-			}
-			commits[parsed.changeset] = Commit{
-				ID:         parsed.changeset,
-				AuthorDate: parsed.date,
-				Author:     Author{Name: parsed.authorName, Email: parsed.authorEmail},
-				Message:    msg,
-			}
-		}
-
-		if currentHunk == nil {
-			currentHunk = &Hunk{
-				CommitID:  parsed.changeset,
-				LineStart: 0, CharStart: 0,
-			}
-		}
-
-		lastLine := i == len(lines)-1
-		if currentHunk.CommitID != parsed.changeset || lastLine {
-			if lastLine {
-				currentHunk.CharEnd += parsed.bytelen + 1
-				currentHunk.LineEnd = i
-			}
-			hunks = append(hunks, *currentHunk)
-			currentHunk = &Hunk{
-				CommitID:  parsed.changeset,
-				LineStart: i,
-				CharStart: currentHunk.CharEnd + 1, CharEnd: currentHunk.CharEnd,
-			}
-		}
-		currentHunk.LineEnd = i
-		currentHunk.CharEnd += parsed.bytelen
-	}
-
-	return hunks, commits, nil
-}
-
-type hgCommitMessageKey struct{ repoPath, changeset string }
-
-var hgCommitMessageCache = make(map[hgCommitMessageKey]string)
-var hgCommitMessageCacheMu sync.Mutex
-
-var hits, misses int
-var logCache bool
-
-func getHgCommitMessage(repoPath string, changeset string) (msg string, err error) {
-	cachekey := hgCommitMessageKey{repoPath, changeset}
-	var present bool
-	func() {
-		hgCommitMessageCacheMu.Lock()
-		defer hgCommitMessageCacheMu.Unlock()
-		msg, present = hgCommitMessageCache[cachekey]
-	}()
-	if present {
-		if logCache {
-			hits++
-			logf("HIT %d (%.1f%%)", hits, float64(hits)/float64(hits+misses)*100)
-		}
-		return msg, nil
-	}
-
-	msg, err = getHgCommitMessageUncached(repoPath, changeset)
-	if err == nil {
-		if logCache {
-			misses++
-			logf("MISS %d (%.1f%%)", misses, float64(misses)/float64(hits+misses)*100)
-		}
-		hgCommitMessageCacheMu.Lock()
-		defer hgCommitMessageCacheMu.Unlock()
-		hgCommitMessageCache[cachekey] = msg
-	}
-	return
-}
-
-func getHgCommitMessageUncached(repoPath string, changeset string) (msg string, err error) {
-	cmd := exec.Command("hg", "log", "-r", changeset, "--template", "{desc}")
+	cmd := exec.Command("python", tmpfile.Name(), repoPath, v, filePath)
 	cmd.Dir = repoPath
 	cmd.Stderr = os.Stderr
-	out, err := cmd.Output()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
-type hgAnnotateLine struct {
-	authorName, authorEmail string
-	changeset               string
-	date                    time.Time
-	bytelen                 int
-}
-
-var hgAnnotateRE = regexp.MustCompile(`^\s*(.*)\s+(<[^ >]+[ >]?)\s*\d+\s*([0-9a-f]+)\s*([^:]*:[^:]*:[^:]*):(.*)$`)
-var hgDateFormat = "Mon Jan 2 15:04:05 2006 -0700"
-
-func parseHgAnnotateLine(line string) (*hgAnnotateLine, error) {
-	if line == "" {
-		return nil, nil
+		return nil, nil, err
 	}
 
-	parts := hgAnnotateRE.FindStringSubmatch(line)
-	if len(parts) < 5 {
-		if strings.Contains(line, ": binary file") {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to match (got only %d matches) %q", len(parts), line)
+	in := bufio.NewReader(stdout)
+	if err := cmd.Start(); err != nil {
+		return nil, nil, err
 	}
 
-	a := new(hgAnnotateLine)
-
-	var datestr string
-	a.authorName, a.authorEmail, a.changeset, datestr = strings.TrimSpace(parts[1]), parts[2], parts[3], parts[4]
-
-	a.authorEmail = strings.TrimSpace(strings.Replace(strings.Replace(a.authorEmail, ">", "", -1), "<", "", -1))
-
-	date, err := time.Parse(hgDateFormat, datestr)
+	var data hgRepoAnnotatOutputFormat
+	err = json.NewDecoder(in).Decode(&data)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	a.date = date
-
-	contents := parts[5]
-	if len(contents) < 2 {
-		contents = ""
-	} else {
-		contents = contents[1:]
-	}
-	a.bytelen = len(contents) + 1 // +1 for newline
-
-	return a, nil
+	return data.Hunks[filePath], data.Commits, nil
 }

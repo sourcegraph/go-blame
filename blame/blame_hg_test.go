@@ -1,10 +1,11 @@
 package blame
 
 import (
-	"github.com/kr/pretty"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/kr/pretty"
 )
 
 var testRepoDirHg = "../go-vcs-hgtest"
@@ -102,23 +103,5 @@ func TestBlameFile_Hg(t *testing.T) {
 
 	if !reflect.DeepEqual(fileExpCommits, commits) {
 		t.Errorf("Commits don't match: %+v != %+v", fileExpCommits, commits)
-	}
-}
-
-func TestParseHgAnnotateLine(t *testing.T) {
-	tests := []struct {
-		line   string
-		parsed *hgAnnotateLine
-	}{}
-	for _, test := range tests {
-		parsed, err := parseHgAnnotateLine(test.line)
-		if err != nil {
-			t.Errorf("%q: parseHgAnnotateLine failed: %s", test.line, err)
-			continue
-		}
-		if !reflect.DeepEqual(test.parsed, parsed) {
-			t.Errorf("%q: want %+v, got %+v", test.line, test.parsed, parsed)
-			continue
-		}
 	}
 }
