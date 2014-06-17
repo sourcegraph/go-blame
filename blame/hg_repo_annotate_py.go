@@ -61,7 +61,7 @@ hunksByFile = {}
 
 if explicitFiles:
     sys.stderr.write("Finding commits for files: %r\n" % explicitFiles)
-for rev in client.log('%s:0' % v, followfirst=True, files=explicitFiles):
+for rev in client.log('%s:0' % v, files=explicitFiles):
     authorName, authorEmail = parseaddr(rev.author)
     dt = rev.date.replace(tzinfo=Local)
     commitID = rev.node[:12]
@@ -82,6 +82,7 @@ def addHunk(file, hunk):
     hunksByFile[file].append(hunk)
     global totalHunks
     totalHunks += 1
+
 i = 0
 for file in files:
     filepath = os.path.join(repodir, file)
