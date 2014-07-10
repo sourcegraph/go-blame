@@ -9,3 +9,9 @@ Requirements
 ------------
 
 * Python `hglib` package (for Mercurial blaming)
+
+
+Known issues
+------------
+
+Tests fail because 90f26648c7d4b2dd4d0067591ae247f374e24c64 introduced a temporary workaround to ignore failures on `git blame`. Check the commit log for more info. TODO: fix the actual underlying feature and the tests should pass again. (Don't remove the tests because we don't want to ignore empty files in blame output.)
